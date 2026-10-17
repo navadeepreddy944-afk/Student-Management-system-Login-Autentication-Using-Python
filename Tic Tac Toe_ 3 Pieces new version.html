@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tic Tac Toe: 3 Pieces</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&display=swap">
+<style>
+:root{--bg:#efece4;--ink:#1d2230;--panel:#fff;--line:#cfc9bb;--x:#c4410c;--o:#0b6e8a;--win:#f6d98a;--dest:#bfe3c4;--sel:#ffe9a8;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14161d;--ink:#f1efe8;--panel:#1e222c;--line:#363b4a;--x:#ff8a4c;--o:#4cc9e8;--win:#5a4d1c;--dest:#24442b;--sel:#5a4d1c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#14161d;--ink:#f1efe8;--panel:#1e222c;--line:#363b4a;--x:#ff8a4c;--o:#4cc9e8;--win:#5a4d1c;--dest:#24442b;--sel:#5a4d1c;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Chakra Petch",system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:16px}
+main{width:min(100%,380px)}
+h1{font-size:1.5rem;margin:6px 0 4px}
+.rules{font-size:.85rem;opacity:.8;margin:0 0 12px;line-height:1.4}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px}
+button{font:inherit;color:var(--ink)}
+.modes button{padding:10px 4px;border:2px solid var(--line);background:var(--panel);border-radius:8px;font-weight:500;font-size:.85rem;cursor:pointer}
+.modes button[aria-pressed="true"]{border-color:var(--ink);font-weight:700}
+.score{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;margin-bottom:12px}
+.score div{background:var(--panel);border:2px solid var(--line);border-radius:8px;padding:8px 0;font-size:.85rem}
+.score b{display:block;font-size:1.4rem}
+#status{text-align:center;font-weight:700;font-size:1.05rem;min-height:2.6em;margin-bottom:8px}
+#board{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cell{display:grid;place-items:center;aspect-ratio:1;background:var(--panel);border:2px solid var(--line);border-radius:10px;font-size:clamp(2.6rem,16vw,4rem);font-weight:700;cursor:pointer;line-height:1}
+.cell:focus-visible,.modes button:focus-visible,#reset:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.stone{display:block;width:68%;aspect-ratio:1;border-radius:50%;border:2px solid var(--ink);box-shadow:0 3px 5px rgba(0,0,0,.35)}
+.stone.X{background:radial-gradient(circle at 35% 30%,#5a5a5a,#0d0d0d 70%)}
+.stone.O{background:radial-gradient(circle at 35% 30%,#ffffff,#cfcfcf 75%)}
+.cell.sel{background:var(--sel);border-color:var(--ink)}
+.cell.dest{background:var(--dest)}
+.cell.win{background:var(--win);border-color:var(--ink)}
+.cell:disabled{cursor:default}
+#reset{width:100%;margin-top:14px;padding:14px;border-radius:10px;border:2px solid var(--ink);background:var(--ink);color:var(--bg);font-weight:700;font-size:1rem;cursor:pointer}
+</style>
+</head>
+<body>
+<main>
+  <h1>Tic Tac Toe: 3 stones</h1>
+  <p class="rules">Black and white stones, 3 each. Place them one by one, then move one stone per turn to a touching empty square. No jumping over stones. Get 3 in a row to win.</p>
+  <div class="modes" role="group" aria-label="Game mode">
+    <button data-m="two" aria-pressed="false">2 players</button>
+    <button data-m="easy" aria-pressed="false">Computer: easy</button>
+    <button data-m="hard" aria-pressed="true">Computer: hard</button>
+  </div>
+  <div class="score">
+    <div>Black wins<b id="sx">0</b></div>
+    <div>Draws<b id="sd">0</b></div>
+    <div>White wins<b id="so">0</b></div>
+  </div>
+  <div id="status" aria-live="polite"></div>
+  <div id="board"></div>
+  <button id="reset">New game</button>
+</main>
+<script>
+const LINES=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+const score={X:0,D:0,O:0};
+let b,turn,placed,sel,over,mode="hard",notice="",winLine=null;
+const boardEl=document.getElementById("board"),statusEl=document.getElementById("status");
+const other=p=>p==="X"?"O":"X";
+const NAME={X:"Black",O:"White"};
+
+// two squares touch if they are neighbours (sideways, up/down or diagonal)
+const adj=(i,j)=>i!==j&&Math.max(Math.abs((i/3|0)-(j/3|0)),Math.abs(i%3-j%3))===1;
+
+for(let i=0;i<9;i++){
+  const c=document.createElement("button");
+  c.className="cell";c.setAttribute("aria-label","Square "+(i+1));
+  c.onclick=()=>click(i);boardEl.appendChild(c);
+}
+const cells=[...boardEl.children];
+
+function winnerOf(s){
+  for(const l of LINES)if(s[l[0]]&&s[l[0]]===s[l[1]]&&s[l[0]]===s[l[2]])return{p:s[l[0]],line:l};
+  return null;
+}
+// all legal moves for player p: place a piece (until 3 are down), then slide to a touching empty square
+function genMoves(s,p,pl){
+  const m=[];
+  if(pl[p]<3){for(let i=0;i<9;i++)if(!s[i])m.push({to:i})}
+  else for(let i=0;i<9;i++)if(s[i]===p)for(let j=0;j<9;j++)if(!s[j]&&adj(i,j))m.push({from:i,to:j});
+  return m;
+}
+function applyMove(s,pl,p,m){
+  const ns=s.slice(),np={X:pl.X,O:pl.O};
+  if(m.from===undefined)np[p]++;else ns[m.from]="";
+  ns[m.to]=p;return[ns,np];
+}
+
+function reset(){
+  b=Array(9).fill("");placed={X:0,O:0};turn="X";sel=null;over=false;notice="";winLine=null;render();
+}
+function click(i){
+  if(over||(mode!=="two"&&turn==="O"))return;
+  const p=turn;
+  if(placed[p]<3){
+    if(!b[i])finish({to:i});
+  }else if(b[i]===p){
+    sel=i;render();
+  }else if(sel!==null&&!b[i]&&adj(sel,i)){
+    finish({from:sel,to:i});
+  }
+}
+function finish(m){
+  const p=turn;
+  [b,placed]=applyMove(b,placed,p,m);sel=null;notice="";
+  const w=winnerOf(b);
+  if(w){over=true;winLine=w.line;score[w.p]++;render();return}
+  turn=other(p);
+  if(!genMoves(b,turn,placed).length){
+    const blocked=turn;turn=p;
+    if(!genMoves(b,turn,placed).length){over=true;score.D++;notice="Both players are blocked: draw.";render();return}
+    notice=NAME[blocked]+" is blocked and skips a turn. ";
+  }
+  render();
+  if(mode!=="two"&&turn==="O"&&!over)setTimeout(computer,450);
+}
+
+// ----- computer: looks a few moves ahead -----
+function search(s,pl,p,depth){
+  const w=winnerOf(s);
+  if(w)return w.p==="O"?10+depth:-10-depth;
+  if(depth===0)return 0;
+  const ms=genMoves(s,p,pl);
+  if(!ms.length){
+    if(!genMoves(s,other(p),pl).length)return 0;
+    return search(s,pl,other(p),depth-1);
+  }
+  let best=p==="O"?-99:99;
+  for(const m of ms){
+    const[ns,np]=applyMove(s,pl,p,m);
+    const v=search(ns,np,other(p),depth-1);
+    best=p==="O"?Math.max(best,v):Math.min(best,v);
+  }
+  return best;
+}
+function computer(){
+  if(over)return;
+  const ms=genMoves(b,"O",placed);
+  let pick;
+  if(mode==="easy"&&Math.random()<.6)pick=ms[Math.random()*ms.length|0];
+  else{
+    let bestV=-99,pool=[];
+    for(const m of ms){
+      const[ns,np]=applyMove(b,placed,"O",m);
+      const v=search(ns,np,"X",5);
+      if(v>bestV){bestV=v;pool=[m]}else if(v===bestV)pool.push(m);
+    }
+    pick=pool[Math.random()*pool.length|0];
+  }
+  finish(pick);
+}
+
+// ----- drawing -----
+function render(){
+  const targets=sel!==null?b.map((v,j)=>!v&&adj(sel,j)):[];
+  cells.forEach((c,i)=>{
+    c.innerHTML=b[i]?'<span class="stone '+b[i]+'"></span>':"";
+    c.setAttribute("aria-label","Square "+(i+1)+(b[i]?", "+NAME[b[i]]+" stone":", empty"));
+    c.className="cell"+(b[i]?" "+b[i]:"")+(sel===i?" sel":"")+(targets[i]?" dest":"")+(winLine&&winLine.includes(i)?" win":"");
+    c.disabled=over||(mode!=="two"&&turn==="O");
+  });
+  document.getElementById("sx").textContent=score.X;
+  document.getElementById("sd").textContent=score.D;
+  document.getElementById("so").textContent=score.O;
+  let t;
+  if(over){
+    const w=winnerOf(b);
+    t=w?(mode!=="two"&&w.p==="O"?"Computer wins!":NAME[w.p]+" wins!"):"It's a draw";
+  }else if(mode!=="two"&&turn==="O"){t="Computer is thinking..."}
+  else if(placed[turn]<3)t=NAME[turn]+": place a stone ("+(3-placed[turn])+" left)";
+  else t=NAME[turn]+": "+(sel===null?"pick one of your stones":"tap a touching empty square");
+  statusEl.textContent=notice+t;
+}
+document.querySelectorAll(".modes button").forEach(btn=>btn.onclick=()=>{
+  mode=btn.dataset.m;
+  document.querySelectorAll(".modes button").forEach(x=>x.setAttribute("aria-pressed",x===btn));
+  Object.assign(score,{X:0,D:0,O:0});reset();
+});
+document.getElementById("reset").onclick=reset;
+reset();
+</script>
+</body>
+</html>
